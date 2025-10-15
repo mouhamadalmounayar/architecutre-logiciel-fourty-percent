@@ -7,4 +7,4 @@ COPY package*.json ./
 
 RUN npm install
 
-CMD ["node", "src/sensors/bloodPressureSensor.js"]
+CMD ["node", "src/sensors/iot-gateway.js"]

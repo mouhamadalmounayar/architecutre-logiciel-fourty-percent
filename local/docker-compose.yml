@@ -27,11 +27,11 @@ services:
     networks:
       - iot-net
 
-  sensor-bp:
+  iot-gateway:
     build:
       context: .
       dockerfile: docker/sensors/Dockerfile
-    container_name: sensor-blood-pressure
+    container_name: iot-gateway
     restart: always
     environment:
       MQTT_BROKER: mosquitto
