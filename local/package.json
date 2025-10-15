@@ -1,0 +1,13 @@
+{
+    "name": "sensor-bp",
+    "version": "1.0.0",
+    "description": "Blood Pressure sensor simulator",
+    "type": "module",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "mqtt": "^5.3.1"
+    }
+}

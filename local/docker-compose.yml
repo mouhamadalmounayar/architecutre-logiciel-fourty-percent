@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./docker/mosquitto/passwd:/mosquitto/config/passwd
+      - ./docker/mosquitto/data:/mosquitto/data
+    networks:
+      - iot-net
+
+  iot-app:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    container_name: iot-client
+    restart: always
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+    networks:
+      - iot-net
+
+  sensor-bp:
+    build:
+      context: .
+      dockerfile: docker/sensors/Dockerfile
+    container_name: sensor-blood-pressure
+    restart: always
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+    networks:
+      - iot-net
+
+networks:
+  iot-net:
+    driver: bridge
