@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -12,20 +10,53 @@ services:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - ./docker/mosquitto/passwd:/mosquitto/config/passwd
       - ./docker/mosquitto/data:/mosquitto/data
-    networks:
-      - iot-net
+    networks: [iot-net]
 
-  iot-app:
+  iot-preprocessing:
     build:
       context: .
       dockerfile: docker/node/Dockerfile
-    container_name: iot-client
+      args:
+        APP_DIR: src/preProcessing   # ← ce dossier doit contenir package.json + index.js
+    container_name: iot-preprocessing
     restart: always
     environment:
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
-    networks:
-      - iot-net
+      # URL HTTP interne du PostProcessing
+      POSTPROCESSOR_URL: http://iot-postprocessing:8080/v1/vitals
+      # Filtre anti-valeurs "impossibles" (prétraitement)
+      BPM_MIN_VALID: 25
+      BPM_MAX_VALID: 220
+    depends_on:
+      - mosquitto
+      - iot-postprocessing
+    networks: [iot-net]
+
+  iot-postprocessing:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+      args:
+        APP_DIR: src/postProcessing  # ← ce dossier doit contenir package.json + index.js
+    container_name: iot-postprocessing
+    restart: always
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: 1883
+      # Seuils vitaux critiques (BPM) + fenêtre de confirmation
+      BPM_MIN_CRIT: 45
+      BPM_MAX_CRIT: 120
+      BPM_CONFIRM_WINDOW_SEC: 6
+      BPM_CONFIRM_MIN_SAMPLES: 3
+      BPM_CONFIRM_RATIO: 0.66
+      # Port HTTP d’écoute de l’API
+      PORT: 8080
+    depends_on:
+      - mosquitto
+    ports:
+      - "8080:8080"   # pour tester l'API /health ou /v1/vitals depuis l'hôte
+    networks: [iot-net]
 
   iot-gateway:
     build:
@@ -36,8 +67,11 @@ services:
     environment:
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
-    networks:
-      - iot-net
+    depends_on:
+      - mosquitto
+    networks: [iot-net]
+
+  # Note: Validator is an external microservice (not part of this repo)
 
 networks:
   iot-net:
