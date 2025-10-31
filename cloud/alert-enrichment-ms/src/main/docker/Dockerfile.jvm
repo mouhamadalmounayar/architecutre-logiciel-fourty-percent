@@ -1,10 +1,22 @@
+# ===== 1) Build stage (Maven dans l'image) =====
+FROM maven:3.9.8-eclipse-temurin-21 AS build
+WORKDIR /build
+
+COPY pom.xml .
+RUN mvn -B -q -DskipTests dependency:go-offline
+
+COPY src ./src
+# 👇 force le build Quarkus + fast-jar (crée target/quarkus-app/*)
+RUN mvn -B -e -DskipTests -Dquarkus.package.type=fast-jar package quarkus:build
+
+# ===== 2) Runtime stage (JRE only) =====
 FROM eclipse-temurin:21-jre
 WORKDIR /work
 RUN useradd -u 1001 quarkus && chown -R 1001 /work
 USER 1001
-COPY target/quarkus-app/lib/ /work/lib/
-COPY target/quarkus-app/*.jar /work/
-COPY target/quarkus-app/app/ /work/app/
-COPY target/quarkus-app/quarkus/ /work/quarkus/
+
+# on copie tout le répertoire quarkus-app d'un bloc
+COPY --from=build /build/target/quarkus-app/ /work/
+
 EXPOSE 8080
 ENTRYPOINT ["java","-Dquarkus.http.host=0.0.0.0","-jar","/work/quarkus-run.jar"]
