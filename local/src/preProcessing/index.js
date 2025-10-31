@@ -1,15 +1,36 @@
 import mqtt from 'mqtt';
 
-const BROKER = process.env.MQTT_BROKER || 'localhost';
-const PORT = Number(process.env.MQTT_PORT || 1883);
-const POSTPROCESSOR_URL = process.env.POSTPROCESSOR_URL || 'http://iot-postprocessing:8080/v1/vitals';
+const HOUSE_ID = process.env.HOUSE_ID || 'beux house';
+const AUTH_URL = process.env.AUTH_URL || 'http://host.docker.internal:3000/auth';
+const BROKER   = process.env.MQTT_BROKER || 'mosquitto';
+const PORT     = Number(process.env.MQTT_PORT || 1883);
+const POST_URL = process.env.POSTPROCESSOR_URL || 'http://iot-postprocessing:8080/v1/vitals';
 
-// filtres anti-bug capteur (prétraitement)
-const BPM_MIN_VALID = Number(process.env.BPM_MIN_VALID || 25);
-const BPM_MAX_VALID = Number(process.env.BPM_MAX_VALID || 220);
+const BPM_MIN_VALID  = Number(process.env.BPM_MIN_VALID  || 25);
+const BPM_MAX_VALID  = Number(process.env.BPM_MAX_VALID  || 220);
+const SPO2_MIN_VALID = Number(process.env.SPO2_MIN_VALID || 50);
+const SPO2_MAX_VALID = Number(process.env.SPO2_MAX_VALID || 100);
 
-// Node 20 a fetch global
-// Petit retry pour rendre le POST plus résilient en cas d'échecs réseau transitoires
+function extractTokenShape(json) {
+  return json?.token || json?.access_token || json?.data?.token || null;
+}
+
+let jwt = null;
+async function fetchToken() {
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ house_id: HOUSE_ID }),
+    });
+    const json = await res.json().catch(() => ({}));
+    jwt = extractTokenShape(json);
+    console.log('[pre] token:', jwt ? 'OK' : 'absent');
+  } catch (e) {
+    console.warn('[pre] token fetch failed:', e?.message || e);
+  }
+}
+
 async function postJson(url, body, attempts = 2, delayMs = 300) {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -24,68 +45,61 @@ async function postJson(url, body, attempts = 2, delayMs = 300) {
       }
       return;
     } catch (err) {
-      if (i === attempts - 1) {
-        throw err;
-      }
-      console.warn(`POST ${url} failed (attempt ${i + 1}), retrying: ${err?.message || err}`);
-      await new Promise((r) => setTimeout(r, delayMs));
+      if (i === attempts - 1) throw err;
+      await new Promise(r => setTimeout(r, delayMs));
     }
   }
 }
 
 const client = mqtt.connect(`mqtt://${BROKER}:${PORT}`);
 
-client.on('connect', () => {
-  console.log(`Preprocessing connected to MQTT ${BROKER}:${PORT}`);
-  client.subscribe('sensors/#', (err) => {
-    if (err) console.error('Subscribe error:', err);
-    else console.log("Abonné à 'sensors/#' (prétraitement)");
+client.on('connect', async () => {
+  console.log(`[pre] MQTT connected ${BROKER}:${PORT}`);
+  await fetchToken();
+  client.subscribe([
+    'sensors/#',
+    'home/patient/+/cardiac/metrics',
+    'home/patient/+/spo2/metrics'
+  ], { qos: 1 }, (err)=> {
+    if (err) console.error('[pre] subscribe error:', err);
+    else console.log('[pre] subscribed to sensors + home/patient metrics');
   });
 });
 
-// Normalisation minimale du message capteur → évènement générique
+function toISO(t) {
+  if (Array.isArray(t) && t.length === 3) {
+    const [d, m, y] = t; return new Date(Date.UTC(y, m - 1, d)).toISOString();
+  }
+  const d = new Date(t || Date.now());
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
 function normalizeEvent(topic, data) {
-  const ts = Number(data?.timestamp) || Date.now();
-  // streamId: patient si dispo, sinon on prend le topic comme clé
+  if (topic.includes('/alert/')) return null;
+  const tsISO = toISO(data?.timestamp);
   const patientId = data?.patientId || null;
   const streamId = patientId || topic;
-
-  if (topic.endsWith('/bloodPressure') && Number.isFinite(data?.bpm)) {
-    const bpm = Number(data.bpm);
-
-    // On ignore seulement les valeurs impossibles. (Les VITALES critiques seront gérées en postprocessing)
-    if (bpm < BPM_MIN_VALID || bpm > BPM_MAX_VALID) {
-      console.warn(`BPM aberrant ignoré: ${bpm} (attendu ${BPM_MIN_VALID}..${BPM_MAX_VALID})`);
-      return null;
-    }
-
-    return {
-      kind: 'BPM',
-      streamId,
-      value: bpm,
-      unit: 'bpm',
-      timestamp: ts,
-      topic,
-    };
+  if (topic.endsWith('/bloodPressure') || topic.endsWith('/cardiac/metrics')) {
+    const bpm = Number(data?.bpm);
+    if (!Number.isFinite(bpm) || bpm < BPM_MIN_VALID || bpm > BPM_MAX_VALID) return null;
+    return { kind: 'BPM', streamId, value: bpm, unit: 'bpm', timestamp: tsISO, topic };
   }
-
-  // (Plus tard: SpO2, etc.)
+  if (topic.endsWith('/bloodOxygen') || topic.endsWith('/spo2/metrics')) {
+    const spo2 = Number(data?.spo2 ?? data?.Spo2);
+    if (!Number.isFinite(spo2) || spo2 < SPO2_MIN_VALID || spo2 > SPO2_MAX_VALID) return null;
+    return { kind: 'SPO2', streamId, value: spo2, unit: '%', timestamp: tsISO, topic };
+  }
   return null;
 }
 
 client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
-    // log léger
-    // console.log(`← ${topic}`, data);
-
     const evt = normalizeEvent(topic, data);
     if (!evt) return;
-
-    await postJson(POSTPROCESSOR_URL, evt);
-    // console.log('→ POST postprocessing ok', evt);
+    await postJson(POST_URL, evt);
   } catch (e) {
-    console.error('Preprocessing error:', e?.message || e);
+    console.error('[pre] error:', e?.message || e);
   }
 });
 

@@ -17,17 +17,19 @@ services:
       context: .
       dockerfile: docker/node/Dockerfile
       args:
-        APP_DIR: src/preProcessing   # ← ce dossier doit contenir package.json + index.js
+        APP_DIR: src/preProcessing
     container_name: iot-preprocessing
     restart: always
     environment:
+      HOUSE_ID: "beux house"
+      AUTH_URL: http://host.docker.internal:3000/auth
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
-      # URL HTTP interne du PostProcessing
       POSTPROCESSOR_URL: http://iot-postprocessing:8080/v1/vitals
-      # Filtre anti-valeurs "impossibles" (prétraitement)
       BPM_MIN_VALID: 25
       BPM_MAX_VALID: 220
+      SPO2_MIN_VALID: 50
+      SPO2_MAX_VALID: 100
     depends_on:
       - mosquitto
       - iot-postprocessing
@@ -38,24 +40,27 @@ services:
       context: .
       dockerfile: docker/node/Dockerfile
       args:
-        APP_DIR: src/postProcessing  # ← ce dossier doit contenir package.json + index.js
+        APP_DIR: src/postProcessing
     container_name: iot-postprocessing
     restart: always
     environment:
+      HOUSE_ID: "beux house"
+      AUTH_URL: http://host.docker.internal:3000/auth
+      VALIDATOR_URL: http://host.docker.internal:3000/alert,http://host.docker.internal:3000/api/alerts/vital
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
-      # Seuils vitaux critiques (BPM) + fenêtre de confirmation
       BPM_MIN_CRIT: 45
       BPM_MAX_CRIT: 120
       BPM_CONFIRM_WINDOW_SEC: 6
       BPM_CONFIRM_MIN_SAMPLES: 3
       BPM_CONFIRM_RATIO: 0.66
-      # Port HTTP d’écoute de l’API
+      BPM_EXIT_RATIO: 0.2
+      COOLDOWN_SEC: 30
+      STALE_SEC: 30
+      SPO2_MIN_CRIT: 90
       PORT: 8080
     depends_on:
       - mosquitto
-    ports:
-      - "8080:8080"   # pour tester l'API /health ou /v1/vitals depuis l'hôte
     networks: [iot-net]
 
   iot-gateway:
@@ -70,8 +75,6 @@ services:
     depends_on:
       - mosquitto
     networks: [iot-net]
-
-  # Note: Validator is an external microservice (not part of this repo)
 
 networks:
   iot-net:
