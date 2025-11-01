@@ -19,12 +19,15 @@ CREATE TABLE IF NOT EXISTS patients (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
+    email VARCHAR(100),
     date_of_birth DATE NOT NULL,
     gender VARCHAR(20),
     address VARCHAR(20),
     current_status VARCHAR(50) DEFAULT 'active',
     doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
-    nurse_id INTEGER REFERENCES nurses(id) ON DELETE SET NULL
+    nurse_id INTEGER REFERENCES nurses(id) ON DELETE SET NULL,
+    house_id INTEGER,
+    password_hash VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS emergency_contacts (
