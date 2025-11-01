@@ -1,0 +1,18 @@
+FROM maven:3.9.8-eclipse-temurin-21 AS build
+WORKDIR /build
+
+COPY pom.xml .
+RUN mvn -B -q -DskipTests dependency:go-offline
+
+COPY src ./src
+RUN mvn -B -e -DskipTests -Dquarkus.package.type=fast-jar package quarkus:build
+
+FROM eclipse-temurin:21-jre
+WORKDIR /work
+RUN useradd -u 1001 quarkus && chown -R 1001 /work
+USER 1001
+
+COPY --from=build /build/target/quarkus-app/ /work/
+
+EXPOSE 8080
+ENTRYPOINT ["java","-Dquarkus.http.host=0.0.0.0","-jar","/work/quarkus-run.jar"]

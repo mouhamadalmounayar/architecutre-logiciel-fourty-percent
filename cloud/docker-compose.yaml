@@ -20,6 +20,18 @@ services:
       # Required for a single node cluster
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  alert-enrichment:
+    build:
+      context: ./alert-enrichment-ms
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: alert-enrichment
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      ALERT_ENRICHMENT_FALLBACK_RECIPIENTS: doctor@hospital.com,nurse@hospital.com
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8080" 
   kafka-ui:
     image: kafbat/kafka-ui:main
     ports:
