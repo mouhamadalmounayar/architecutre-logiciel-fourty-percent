@@ -63,6 +63,26 @@ services:
       timeout: 5s
       retries: 5
 
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    environment:
+      KAFKA_CLIENT_ID: notification-service
+      KAFKA_BROKERS: kafka:9093
+      KAFKA_GROUP_ID: notification-service-group
+      KAFKA_TOPICS: enriched-alerts-events
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    depends_on:
+      - kafka
+    networks:
+      - shared
+
   validator_ms:
     build:
       context: ./validator_ms/
