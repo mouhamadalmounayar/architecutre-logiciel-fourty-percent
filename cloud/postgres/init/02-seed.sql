@@ -1,9 +1,9 @@
 
 INSERT INTO doctors (first_name, last_name, email, phone) VALUES
-    ('Jim', 'Abi habib', 'jim.abihabib@gmail.com', '0763924496');
+    ('Jim', 'Abi habib', 'mnayar.mhmd@gmail.com', '0763924496');
 
 INSERT INTO nurses (first_name, last_name, email, phone) VALUES
-    ('momo', 'almounayar', 'momo.almounayar@gmail.com', '4934920');
+    ('logan', 'brunet', 'logan.brunet@etu.unice.fr', '4934920');
 
 INSERT INTO patients (first_name, last_name, phone, email, date_of_birth, gender, address, current_status, doctor_id, nurse_id, house_id, password_hash) VALUES
     ('John', 'Doe', '555-1001', 'john.doe@email.com', '1975-05-15', 'male', '123 Main St, City', 'active', 1, 1, 1, '$2b$12$BCErGzxFz6vI/.2cDOFVg.i5I8y9y9bC47S0dPaiTAMU1qRH0/zZO'),

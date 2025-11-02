@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    environment:
+      KAFKA_CLIENT_ID: notification-service
+      KAFKA_BROKERS: kafka:9093
+      KAFKA_GROUP_ID: notification-service-group
+      KAFKA_TOPICS: alerts
+      
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    depends_on:
+      - kafka
+    networks:
+      - notification-net
+      - cloud_default  
+
+networks:
+  notification-net:
+    driver: bridge
+  cloud_default:
+    external: true 
