@@ -44,9 +44,9 @@ services:
     container_name: iot-postprocessing
     restart: always
     environment:
-      HOUSE_ID: "beux house"
-      AUTH_URL: http://host.docker.internal:3000/auth
-      VALIDATOR_URL: http://host.docker.internal:3000/alert,http://host.docker.internal:3000/api/alerts/vital
+      HOUSE_ID: 1
+      AUTH_URL: http://validator_ms:3000/auth
+      VALIDATOR_URL: http://validator_ms:3000/alert
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
       BPM_MIN_CRIT: 45
@@ -61,7 +61,7 @@ services:
       PORT: 8080
     depends_on:
       - mosquitto
-    networks: [iot-net]
+    networks: [iot-net, shared]
 
   iot-gateway:
     build:
@@ -79,3 +79,5 @@ services:
 networks:
   iot-net:
     driver: bridge
+  shared:
+    external: true

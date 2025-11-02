@@ -19,6 +19,8 @@ services:
 
       # Required for a single node cluster
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - shared
 
   alert-enrichment:
     build:
@@ -28,10 +30,50 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       ALERT_ENRICHMENT_FALLBACK_RECIPIENTS: doctor@hospital.com,nurse@hospital.com
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
     depends_on:
-      - kafka
+      kafka:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     ports:
-      - "8081:8080" 
+      - "8081:8080"
+    networks:
+      - shared
+
+  postgres:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - 5434:5432
+    networks:
+      - shared
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  validator_ms:
+    build:
+      context: ./validator_ms/
+      dockerfile: Dockerfile
+    ports:
+      - 3000:3000
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - shared
+
   kafka-ui:
     image: kafbat/kafka-ui:main
     ports:
@@ -40,3 +82,9 @@ services:
       DYNAMIC_CONFIG_ENABLED: "true"
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
+    networks:
+      - shared
+
+networks:
+  shared:
+    external: true
