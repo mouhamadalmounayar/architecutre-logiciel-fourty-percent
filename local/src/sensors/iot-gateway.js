@@ -3,9 +3,7 @@ import mqtt from 'mqtt';
 const BROKER = process.env.MQTT_BROKER || 'localhost';
 const PORT = process.env.MQTT_PORT || 1883;
 
-const TOPIC_ALERT_BLOOD_PRESSURE = 'sensors/alert/bloodPressure';
 const TOPIC_REGULAR_BLOOD_PRESSURE = 'sensors/regular/bloodPressure';
-const TOPIC_ALERT_BLOOD_OXYGEN = 'sensors/alert/bloodOxygen';
 const TOPIC_REGULAR_BLOOD_OXYGEN = 'sensors/regular/bloodOxygen';
 
 const LONG_REGULAR_RATE = 1 / 20;
@@ -70,7 +68,6 @@ function sendRegularBPM(forceAlert = false) {
             ? Math.floor(10 + Math.random() * 50)
             : Math.floor(120 + Math.random() * 60);
         console.log('Alert BPM:', bpm);
-        publishData(TOPIC_ALERT_BLOOD_PRESSURE, { bpm });
     } else {
         bpm = Math.floor(60 + Math.random() * 40);
     }
@@ -84,7 +81,6 @@ function sendRegularOxygen(forceAlert = false) {
     if (forceAlert) {
         spo2 = Math.floor(70 + Math.random() * 15);
         console.log('Alert SpO₂:', spo2);
-        publishData(TOPIC_ALERT_BLOOD_OXYGEN, { spo2 });
     } else {
         spo2 = Math.floor(95 + Math.random() * 4);
     }

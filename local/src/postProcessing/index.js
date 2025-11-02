@@ -101,20 +101,6 @@ async function sendAlertToValidator(
   }
 }
 
-function publishVitalAlert(
-  streamId,
-  alert_message,
-  metrics,
-  date = new Date(),
-) {
-  const streamKey = encodeURIComponent(String(streamId));
-  const topic = `house/${encodeURIComponent(HOUSE_ID)}/alerts/vital/${streamKey}`;
-  const payload = { timestamp: date.toISOString(), alert_message, metrics };
-  mqttClient.publish(topic, JSON.stringify(payload), { qos: 1, retain: false });
-  console.log("publish", topic, payload);
-  void sendAlertToValidator(alert_message, metrics, date);
-}
-
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 const streams = new Map();
@@ -164,8 +150,7 @@ app.post("/v1/vitals", (req, res) => {
       const bpmMax = Math.max(...vals);
       const direction =
         bpmMin < BPM_MIN_CRIT ? "bpm_really_low" : "bpm_really_high";
-      publishVitalAlert(
-        streamId,
+      sendAlertToValidator(
         direction,
         { bpm_min: bpmMin, bpm_max: bpmMax, window_sec: CONFIRM_WINDOW_SEC },
         new Date(),
@@ -180,8 +165,7 @@ app.post("/v1/vitals", (req, res) => {
     ) {
       st.inAlert = false;
       st.lastChange = now;
-      publishVitalAlert(
-        streamId,
+      sendAlertToValidator(
         "resolved",
         { window_sec: CONFIRM_WINDOW_SEC },
         new Date(),
@@ -213,8 +197,7 @@ app.post("/v1/vitals", (req, res) => {
       st.lastChange = now;
       const vals = st.win.map((x) => x.v);
       const spo2Min = Math.min(...vals);
-      publishVitalAlert(
-        streamId,
+      sendAlertToValidator(
         "oxy_low",
         { spo2_min: spo2Min, window_sec: CONFIRM_WINDOW_SEC },
         new Date(),
@@ -229,8 +212,7 @@ app.post("/v1/vitals", (req, res) => {
     ) {
       st.inAlert = false;
       st.lastChange = now;
-      publishVitalAlert(
-        streamId,
+      sendAlertToValidator(
         "resolved",
         { window_sec: CONFIRM_WINDOW_SEC },
         new Date(),
@@ -263,8 +245,7 @@ setInterval(
       ) {
         st.bpm.inAlert = false;
         st.bpm.win = [];
-        publishVitalAlert(
-          id,
+        sendAlertToValidator(
           "resolved",
           { window_sec: CONFIRM_WINDOW_SEC, reason: "stale_bpm" },
           new Date(),
@@ -277,8 +258,7 @@ setInterval(
       ) {
         st.spo2.inAlert = false;
         st.spo2.win = [];
-        publishVitalAlert(
-          id,
+        sendAlertToValidator(
           "resolved",
           { window_sec: CONFIRM_WINDOW_SEC, reason: "stale_spo2" },
           new Date(),

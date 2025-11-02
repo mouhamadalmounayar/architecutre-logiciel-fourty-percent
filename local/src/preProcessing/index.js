@@ -1,35 +1,13 @@
 import mqtt from 'mqtt';
 
-const HOUSE_ID = process.env.HOUSE_ID || 'beux house';
-const AUTH_URL = process.env.AUTH_URL || 'http://host.docker.internal:3000/auth';
-const BROKER   = process.env.MQTT_BROKER || 'mosquitto';
-const PORT     = Number(process.env.MQTT_PORT || 1883);
+const BROKER = process.env.MQTT_BROKER || 'mosquitto';
+const PORT = Number(process.env.MQTT_PORT || 1883);
 const POST_URL = process.env.POSTPROCESSOR_URL || 'http://iot-postprocessing:8080/v1/vitals';
 
-const BPM_MIN_VALID  = Number(process.env.BPM_MIN_VALID  || 25);
-const BPM_MAX_VALID  = Number(process.env.BPM_MAX_VALID  || 220);
+const BPM_MIN_VALID = Number(process.env.BPM_MIN_VALID || 25);
+const BPM_MAX_VALID = Number(process.env.BPM_MAX_VALID || 220);
 const SPO2_MIN_VALID = Number(process.env.SPO2_MIN_VALID || 50);
 const SPO2_MAX_VALID = Number(process.env.SPO2_MAX_VALID || 100);
-
-function extractTokenShape(json) {
-  return json?.token || json?.access_token || json?.data?.token || null;
-}
-
-let jwt = null;
-async function fetchToken() {
-  try {
-    const res = await fetch(AUTH_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ house_id: HOUSE_ID }),
-    });
-    const json = await res.json().catch(() => ({}));
-    jwt = extractTokenShape(json);
-    console.log('[pre] token:', jwt ? 'OK' : 'absent');
-  } catch (e) {
-    console.warn('[pre] token fetch failed:', e?.message || e);
-  }
-}
 
 async function postJson(url, body, attempts = 2, delayMs = 300) {
   for (let i = 0; i < attempts; i++) {
@@ -55,12 +33,11 @@ const client = mqtt.connect(`mqtt://${BROKER}:${PORT}`);
 
 client.on('connect', async () => {
   console.log(`[pre] MQTT connected ${BROKER}:${PORT}`);
-  await fetchToken();
   client.subscribe([
     'sensors/#',
     'home/patient/+/cardiac/metrics',
     'home/patient/+/spo2/metrics'
-  ], { qos: 1 }, (err)=> {
+  ], { qos: 1 }, (err) => {
     if (err) console.error('[pre] subscribe error:', err);
     else console.log('[pre] subscribed to sensors + home/patient metrics');
   });

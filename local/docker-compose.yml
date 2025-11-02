@@ -21,8 +21,6 @@ services:
     container_name: iot-preprocessing
     restart: always
     environment:
-      HOUSE_ID: "beux house"
-      AUTH_URL: http://host.docker.internal:3000/auth
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
       POSTPROCESSOR_URL: http://iot-postprocessing:8080/v1/vitals
