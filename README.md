@@ -77,7 +77,7 @@ Pour participer au projet, suivez cette démarche :
 
     - Toute information utile pour la revue
 
-⚠️ Règles à respecter si vous souhaitez que vos modifications soient intégrés
+**Règles à respecter si vous souhaitez que vos modifications soient intégrés**
 
 - Ne modifiez pas l’architecture sans accord préalable.
 
