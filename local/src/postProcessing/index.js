@@ -4,9 +4,12 @@ import mqtt from "mqtt";
 const app = express();
 app.use(express.json());
 
-const HOUSE_ID = process.env.HOUSE_ID || "beux house";
-const BROKER = process.env.MQTT_BROKER || "localhost";
+const BROKER = process.env.MQTT_BROKER || 'mosquitto';
 const PORT = Number(process.env.MQTT_PORT || 1883);
+
+const VITALS_PREPROCESSED_TOPIC_BASE = process.env.VITALS_PREPROCESSED_TOPIC_BASE || 'preprocessed/vitals';
+
+const HOUSE_ID = process.env.HOUSE_ID || "beux house";
 const AUTH_URL =
   process.env.AUTH_URL || "http://host.docker.internal:3000/auth";
 const VALIDATOR_URLS = (process.env.VALIDATOR_URL || "")
@@ -29,9 +32,11 @@ const COOLDOWN_MS = COOLDOWN_SEC * 1000;
 const STALE_MS = STALE_SEC * 1000;
 
 const mqttClient = mqtt.connect(`mqtt://${BROKER}:${PORT}`);
-mqttClient.on("connect", () =>
-  console.log(`PostProcessing connected to MQTT ${BROKER}:${PORT}`),
-);
+
+mqttClient.subscribe([`${VITALS_PREPROCESSED_TOPIC_BASE}/#`], { qos: 1 }, (err) => {
+  if (err) console.error('[post] subscribe error:', err);
+  else console.log(`[post] Subscribed to ${VITALS_PREPROCESSED_TOPIC_BASE}/#`);
+});
 
 let validatorToken = null;
 function extractTokenShape(json) {
@@ -119,119 +124,123 @@ function prune(win, now) {
   while (win.length && now - win[0].t > WINDOW_MS) win.shift();
 }
 
-app.post("/v1/vitals", (req, res) => {
-  const { kind, streamId, value, unit, timestamp } = req.body || {};
-  const now = Date.now();
-  if (!kind || !streamId || typeof value !== "number")
-    return res.status(400).json({ error: "invalid payload" });
+mqttClient.on('message', (topic, message) => {
+  try {
+    console.log(`[post] MQTT message received on topic "${topic}": ${message.toString()}`);
 
-  if (kind === "BPM") {
-    const stAll = getOrInit(streamId);
-    const st = stAll.bpm;
-    st.lastSampleAt = now;
-    st.win.push({ t: now, v: value, unit, sensorTs: timestamp });
-    prune(st.win, now);
-    const total = st.win.length;
-    const criticalCount = st.win.reduce(
-      (n, s) => n + (s.v < BPM_MIN_CRIT || s.v > BPM_MAX_CRIT ? 1 : 0),
-      0,
-    );
-    const ratio = total ? criticalCount / total : 0;
-    if (
-      !st.inAlert &&
-      total >= CONFIRM_MIN_SAMPLES &&
-      ratio >= CONFIRM_RATIO &&
-      now - st.lastChange > COOLDOWN_MS
-    ) {
-      st.inAlert = true;
-      st.lastChange = now;
-      const vals = st.win.map((x) => x.v);
-      const bpmMin = Math.min(...vals);
-      const bpmMax = Math.max(...vals);
-      const direction =
-        bpmMin < BPM_MIN_CRIT ? "bpm_really_low" : "bpm_really_high";
-      sendAlertToValidator(
-        direction,
-        { bpm_min: bpmMin, bpm_max: bpmMax, window_sec: CONFIRM_WINDOW_SEC },
-        new Date(),
-      );
-      return res.json({ ok: true, entered: true });
+    const evt = JSON.parse(message.toString());
+    const { kind, streamId, value, unit, timestamp } = evt || {};
+    const now = Date.now();
+
+    if (!kind || !streamId || typeof value !== 'number') {
+      console.warn('[post] Invalid payload:', evt);
+      return;
     }
-    if (
-      st.inAlert &&
-      total >= CONFIRM_MIN_SAMPLES &&
-      ratio < EXIT_RATIO &&
-      now - st.lastChange > 1000
-    ) {
-      st.inAlert = false;
-      st.lastChange = now;
-      sendAlertToValidator(
-        "resolved",
-        { window_sec: CONFIRM_WINDOW_SEC },
-        new Date(),
+
+    if (kind === 'BPM') {
+      const stAll = getOrInit(streamId);
+      const st = stAll.bpm;
+      st.lastSampleAt = now;
+      st.win.push({ t: now, v: value, unit, sensorTs: timestamp });
+      prune(st.win, now);
+
+      const total = st.win.length;
+      const criticalCount = st.win.reduce(
+        (n, s) => n + (s.v < BPM_MIN_CRIT || s.v > BPM_MAX_CRIT ? 1 : 0),
+        0,
       );
-      return res.json({ ok: true, recovered: true });
+      const ratio = total ? criticalCount / total : 0;
+
+      if (
+        !st.inAlert &&
+        total >= CONFIRM_MIN_SAMPLES &&
+        ratio >= CONFIRM_RATIO &&
+        now - st.lastChange > COOLDOWN_MS
+      ) {
+        st.inAlert = true;
+        st.lastChange = now;
+        const vals = st.win.map((x) => x.v);
+        const bpmMin = Math.min(...vals);
+        const bpmMax = Math.max(...vals);
+        const direction =
+          bpmMin < BPM_MIN_CRIT ? 'bpm_really_low' : 'bpm_really_high';
+        sendAlertToValidator(
+          direction,
+          { bpm_min: bpmMin, bpm_max: bpmMax, window_sec: CONFIRM_WINDOW_SEC },
+          new Date(),
+        );
+        return;
+      }
+
+      if (
+        st.inAlert &&
+        total >= CONFIRM_MIN_SAMPLES &&
+        ratio < EXIT_RATIO &&
+        now - st.lastChange > 1000
+      ) {
+        st.inAlert = false;
+        st.lastChange = now;
+        sendAlertToValidator(
+          'resolved',
+          { window_sec: CONFIRM_WINDOW_SEC },
+          new Date(),
+        );
+        return;
+      }
     }
-    return res.json({ ok: true });
+
+    if (kind === 'SPO2') {
+      const stAll = getOrInit(streamId);
+      const st = stAll.spo2;
+      st.lastSampleAt = now;
+      st.win.push({ t: now, v: value, unit, sensorTs: timestamp });
+      prune(st.win, now);
+
+      const total = st.win.length;
+      const criticalCount = st.win.reduce(
+        (n, s) => n + (s.v < SPO2_MIN_CRIT ? 1 : 0),
+        0,
+      );
+      const ratio = total ? criticalCount / total : 0;
+
+      if (
+        !st.inAlert &&
+        total >= CONFIRM_MIN_SAMPLES &&
+        ratio >= CONFIRM_RATIO &&
+        now - st.lastChange > COOLDOWN_MS
+      ) {
+        st.inAlert = true;
+        st.lastChange = now;
+        const vals = st.win.map((x) => x.v);
+        const spo2Min = Math.min(...vals);
+        sendAlertToValidator(
+          'oxy_low',
+          { spo2_min: spo2Min, window_sec: CONFIRM_WINDOW_SEC },
+          new Date(),
+        );
+        return;
+      }
+
+      if (
+        st.inAlert &&
+        total >= CONFIRM_MIN_SAMPLES &&
+        ratio < EXIT_RATIO &&
+        now - st.lastChange > 1000
+      ) {
+        st.inAlert = false;
+        st.lastChange = now;
+        sendAlertToValidator(
+          'resolved',
+          { window_sec: CONFIRM_WINDOW_SEC },
+          new Date(),
+        );
+        return;
+      }
+    }
+
+  } catch (err) {
+    console.error('[post] Error processing MQTT message:', err);
   }
-
-  if (kind === "SPO2") {
-    const stAll = getOrInit(streamId);
-    const st = stAll.spo2;
-    st.lastSampleAt = now;
-    st.win.push({ t: now, v: value, unit, sensorTs: timestamp });
-    prune(st.win, now);
-    const total = st.win.length;
-    const criticalCount = st.win.reduce(
-      (n, s) => n + (s.v < SPO2_MIN_CRIT ? 1 : 0),
-      0,
-    );
-    const ratio = total ? criticalCount / total : 0;
-    if (
-      !st.inAlert &&
-      total >= CONFIRM_MIN_SAMPLES &&
-      ratio >= CONFIRM_RATIO &&
-      now - st.lastChange > COOLDOWN_MS
-    ) {
-      st.inAlert = true;
-      st.lastChange = now;
-      const vals = st.win.map((x) => x.v);
-      const spo2Min = Math.min(...vals);
-      sendAlertToValidator(
-        "oxy_low",
-        { spo2_min: spo2Min, window_sec: CONFIRM_WINDOW_SEC },
-        new Date(),
-      );
-      return res.json({ ok: true, entered: true });
-    }
-    if (
-      st.inAlert &&
-      total >= CONFIRM_MIN_SAMPLES &&
-      ratio < EXIT_RATIO &&
-      now - st.lastChange > 1000
-    ) {
-      st.inAlert = false;
-      st.lastChange = now;
-      sendAlertToValidator(
-        "resolved",
-        { window_sec: CONFIRM_WINDOW_SEC },
-        new Date(),
-      );
-      return res.json({ ok: true, recovered: true });
-    }
-    return res.json({ ok: true });
-  }
-
-  return res.status(204).end();
-});
-
-const HTTP_PORT = Number(process.env.PORT || 8080);
-app.listen(HTTP_PORT, () => {
-  console.log(`PostProcessing HTTP listening on :${HTTP_PORT}`);
-  console.log(
-    `Seuils BPM: <${BPM_MIN_CRIT} ou >${BPM_MAX_CRIT} | fenêtre ${CONFIRM_WINDOW_SEC}s, min ${CONFIRM_MIN_SAMPLES}, ratio in=${CONFIRM_RATIO}, out=${EXIT_RATIO}`,
-  );
-  console.log(`Seuil SpO₂ critique: <${SPO2_MIN_CRIT}%`);
 });
 
 setInterval(
@@ -268,3 +277,8 @@ setInterval(
   },
   Math.max(1000, Math.floor(STALE_MS / 3)),
 );
+
+process.on('SIGINT', () => {
+  client.end(true);
+  process.exit(0);
+});
