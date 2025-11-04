@@ -1,5 +1,33 @@
 import EmailService from "../email/emailService.js";
 
+// ============================================================================
+// COLORIZED LOGGING FOR DEMO
+// ============================================================================
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgMagenta: '\x1b[45m',
+};
+
+function logEmailSent(recipient, title) {
+  const banner = '━'.repeat(80);
+  console.log(`\n${colors.bright}${colors.bgMagenta}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}*** EMAIL NOTIFICATION SENT ***${colors.reset}`);
+  console.log(`${colors.bright}${colors.bgMagenta}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}To: ${recipient}${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}Subject: ${title}${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}Sent at: ${new Date().toISOString()}${colors.reset}`);
+  console.log(`${colors.bright}${colors.bgMagenta}${banner}${colors.reset}\n`);
+}
+
 class NotificationHandler {
   constructor(emailConfig) {
     this.emailService = new EmailService(emailConfig);
@@ -44,11 +72,20 @@ class NotificationHandler {
       if (failureCount > 0) {
         results
           .filter((r) => !(r.status === "fulfilled" && r.data?.success))
-          .forEach((r) => console.error("❌ Email send failure:", r));
+          .forEach((r) => console.error("[ERROR] Email send failure:", r));
       }
 
+      // LOG EACH SUCCESSFUL EMAIL WITH SPECTACULAR BANNER
+      results
+        .filter((r) => r.status === "fulfilled" && r.data?.success)
+        .forEach((r, index) => {
+          if (emails[index]) {
+            logEmailSent(emails[index], title);
+          }
+        });
+
       console.log(
-        `Emails sent: ${successCount} succeeded, ${failureCount} failed`,
+        `${colors.green}[SUCCESS] Email Summary: ${successCount} succeeded, ${failureCount} failed${colors.reset}`,
       );
 
       return {
@@ -60,7 +97,7 @@ class NotificationHandler {
         },
       };
     } catch (error) {
-      console.error("❌ Error handling alert:", error);
+      console.error("[ERROR] Error handling alert:", error);
       return { success: false, error: error.message };
     }
   }

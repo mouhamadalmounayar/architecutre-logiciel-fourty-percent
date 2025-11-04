@@ -4,6 +4,66 @@ import mqtt from "mqtt";
 const app = express();
 app.use(express.json());
 
+// ============================================================================
+// COLORIZED LOGGING UTILITIES FOR DEMO
+// ============================================================================
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgYellow: '\x1b[43m',
+};
+
+function logAlert(type, message, metrics = {}) {
+  const banner = '━'.repeat(80);
+  console.log(`\n${colors.bright}${colors.bgRed}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.red}*** CRITICAL ALERT DETECTED ***${colors.reset}`);
+  console.log(`${colors.bright}${colors.bgRed}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.red}Alert Type: ${type.toUpperCase()}${colors.reset}`);
+  console.log(`${colors.bright}${colors.red}Message: ${message}${colors.reset}`);
+  console.log(`${colors.bright}${colors.red}Timestamp: ${new Date().toISOString()}${colors.reset}`);
+  if (Object.keys(metrics).length > 0) {
+    console.log(`${colors.bright}${colors.red}Metrics:${colors.reset}`);
+    Object.entries(metrics).forEach(([key, value]) => {
+      console.log(`${colors.bright}${colors.red}   - ${key}: ${value}${colors.reset}`);
+    });
+  }
+  console.log(`${colors.bright}${colors.bgRed}${banner}${colors.reset}\n`);
+}
+
+function logResolved(message) {
+  const banner = '━'.repeat(80);
+  console.log(`\n${colors.bright}${colors.bgGreen}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.green}*** ALERT RESOLVED ***${colors.reset}`);
+  console.log(`${colors.bright}${colors.bgGreen}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.green}${message}${colors.reset}`);
+  console.log(`${colors.bright}${colors.green}Timestamp: ${new Date().toISOString()}${colors.reset}`);
+  console.log(`${colors.bright}${colors.bgGreen}${banner}${colors.reset}\n`);
+}
+
+function logInfo(message) {
+  console.log(`${colors.cyan}[INFO] ${message}${colors.reset}`);
+}
+
+function logSuccess(message) {
+  console.log(`${colors.green}[SUCCESS] ${message}${colors.reset}`);
+}
+
+function logWarning(message) {
+  console.log(`${colors.yellow}[WARNING] ${message}${colors.reset}`);
+}
+
+function logError(message) {
+  console.log(`${colors.red}[ERROR] ${message}${colors.reset}`);
+}
+
 const BROKER = process.env.MQTT_BROKER || 'mosquitto';
 const PORT = Number(process.env.MQTT_PORT || 1883);
 
@@ -31,11 +91,30 @@ const WINDOW_MS = CONFIRM_WINDOW_SEC * 1000;
 const COOLDOWN_MS = COOLDOWN_SEC * 1000;
 const STALE_MS = STALE_SEC * 1000;
 
+// ============================================================================
+// STARTUP BANNER
+// ============================================================================
+function showStartupBanner() {
+  const banner = '═'.repeat(80);
+  console.log(`\n${colors.bright}${colors.cyan}${banner}${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}       IOT HEALTH MONITORING - POSTPROCESSING SERVICE${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}${banner}${colors.reset}`);
+  console.log(`${colors.cyan}MQTT Broker: ${BROKER}:${PORT}${colors.reset}`);
+  console.log(`${colors.cyan}House ID: ${HOUSE_ID}${colors.reset}`);
+  console.log(`${colors.cyan}BPM Critical Range: ${BPM_MIN_CRIT}-${BPM_MAX_CRIT}${colors.reset}`);
+  console.log(`${colors.cyan}SPO2 Critical Threshold: <${SPO2_MIN_CRIT}%${colors.reset}`);
+  console.log(`${colors.cyan}Confirmation Window: ${CONFIRM_WINDOW_SEC}s${colors.reset}`);
+  console.log(`${colors.cyan}Validator URL: ${VALIDATOR_URLS.join(', ')}${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}${banner}${colors.reset}\n`);
+}
+
+showStartupBanner();
+
 const mqttClient = mqtt.connect(`mqtt://${BROKER}:${PORT}`);
 
 mqttClient.subscribe([`${VITALS_PREPROCESSED_TOPIC_BASE}/#`], { qos: 1 }, (err) => {
-  if (err) console.error('[post] subscribe error:', err);
-  else console.log(`[post] Subscribed to ${VITALS_PREPROCESSED_TOPIC_BASE}/#`);
+  if (err) logError(`[MQTT] Subscribe error: ${err}`);
+  else logSuccess(`[MQTT] Subscribed to ${VITALS_PREPROCESSED_TOPIC_BASE}/#`);
 });
 
 let validatorToken = null;
@@ -98,11 +177,11 @@ async function sendAlertToValidator(
       });
     }
     if (res.ok) {
-      console.log("[validator] alert sent:", url);
+      logSuccess(`[CLOUD] Alert successfully sent to validator: ${url}`);
       return;
     }
     const t = await res.text().catch(() => "");
-    console.warn(`[validator] POST ${url} failed: ${res.status} ${t}`);
+    logWarning(`[CLOUD] POST ${url} failed: ${res.status} ${t}`);
   }
 }
 
@@ -126,14 +205,14 @@ function prune(win, now) {
 
 mqttClient.on('message', (topic, message) => {
   try {
-    console.log(`[post] MQTT message received on topic "${topic}": ${message.toString()}`);
+    logInfo(`[MQTT] Message received on topic "${topic}"`);
 
     const evt = JSON.parse(message.toString());
     const { kind, streamId, value, unit, timestamp } = evt || {};
     const now = Date.now();
 
     if (!kind || !streamId || typeof value !== 'number') {
-      console.warn('[post] Invalid payload:', evt);
+      logWarning('[MQTT] Invalid payload received');
       return;
     }
 
@@ -164,6 +243,21 @@ mqttClient.on('message', (topic, message) => {
         const bpmMax = Math.max(...vals);
         const direction =
           bpmMin < BPM_MIN_CRIT ? 'bpm_really_low' : 'bpm_really_high';
+
+        // SPECTACULAR ALERT LOG FOR DEMO
+        logAlert(
+          'HEART RATE',
+          direction === 'bpm_really_low' ? 'Heart rate critically LOW!' : 'Heart rate critically HIGH!',
+          {
+            'Stream ID': streamId,
+            'BPM Min': bpmMin,
+            'BPM Max': bpmMax,
+            'Window': `${CONFIRM_WINDOW_SEC} seconds`,
+            'Critical Range': `${BPM_MIN_CRIT}-${BPM_MAX_CRIT} BPM`,
+            'Alert Direction': direction
+          }
+        );
+
         sendAlertToValidator(
           direction,
           { bpm_min: bpmMin, bpm_max: bpmMax, window_sec: CONFIRM_WINDOW_SEC },
@@ -180,6 +274,10 @@ mqttClient.on('message', (topic, message) => {
       ) {
         st.inAlert = false;
         st.lastChange = now;
+
+        // LOG RESOLVED BPM ALERT
+        logResolved(`Heart rate NORMALIZED for stream ${streamId} - Patient stable`);
+
         sendAlertToValidator(
           'resolved',
           { window_sec: CONFIRM_WINDOW_SEC },
@@ -213,6 +311,20 @@ mqttClient.on('message', (topic, message) => {
         st.lastChange = now;
         const vals = st.win.map((x) => x.v);
         const spo2Min = Math.min(...vals);
+
+        // SPECTACULAR ALERT LOG FOR OXYGEN
+        logAlert(
+          'OXYGEN SATURATION',
+          'Blood oxygen level critically LOW!',
+          {
+            'Stream ID': streamId,
+            'SPO2 Min': `${spo2Min}%`,
+            'Window': `${CONFIRM_WINDOW_SEC} seconds`,
+            'Critical Threshold': `< ${SPO2_MIN_CRIT}%`,
+            'Alert Type': 'oxy_low'
+          }
+        );
+
         sendAlertToValidator(
           'oxy_low',
           { spo2_min: spo2Min, window_sec: CONFIRM_WINDOW_SEC },
@@ -229,6 +341,10 @@ mqttClient.on('message', (topic, message) => {
       ) {
         st.inAlert = false;
         st.lastChange = now;
+
+        // LOG RESOLVED SPO2 ALERT
+        logResolved(`Oxygen saturation NORMALIZED for stream ${streamId} - Patient breathing well`);
+
         sendAlertToValidator(
           'resolved',
           { window_sec: CONFIRM_WINDOW_SEC },
@@ -239,7 +355,7 @@ mqttClient.on('message', (topic, message) => {
     }
 
   } catch (err) {
-    console.error('[post] Error processing MQTT message:', err);
+    logError(`[MQTT] Error processing message: ${err.message}`);
   }
 });
 
@@ -278,7 +394,13 @@ setInterval(
   Math.max(1000, Math.floor(STALE_MS / 3)),
 );
 
+const HTTP_PORT = Number(process.env.PORT || 8080);
+app.listen(HTTP_PORT, () => {
+  logSuccess(`[HTTP] Server listening on port ${HTTP_PORT}`);
+  logInfo(`[HTTP] Health check: http://localhost:${HTTP_PORT}/health`);
+});
+
 process.on('SIGINT', () => {
-  client.end(true);
+  mqttClient.end(true);
   process.exit(0);
 });
