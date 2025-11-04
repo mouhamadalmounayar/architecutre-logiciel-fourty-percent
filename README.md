@@ -1,6 +1,12 @@
 # fourty-percent-french
 Depot architecture logicielle
 
+
+## Documentation Architecture
+
+- **[Architecture Edge/Local (MQTT, Preprocessing, Postprocessing)](local/ARCHITECTURE.md)** - Architecture de la partie locale/Edge du système
+- Architecture Cloud (Kafka, Validator, Alert Enrichment, Notification) - *À venir*
+
 ---
 
 ## Comment lancer/utiliser le projet
