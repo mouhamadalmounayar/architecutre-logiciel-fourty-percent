@@ -3,8 +3,8 @@ import mqtt from 'mqtt';
 const BROKER = process.env.MQTT_BROKER || 'localhost';
 const PORT = process.env.MQTT_PORT || 1883;
 
-const TOPIC_REGULAR_BLOOD_PRESSURE = 'sensors/regular/bloodPressure';
-const TOPIC_REGULAR_BLOOD_OXYGEN = 'sensors/regular/bloodOxygen';
+const TOPIC_REGULAR_BLOOD_PRESSURE = 'sensors/vitals/bloodPressure';
+const TOPIC_REGULAR_BLOOD_OXYGEN = 'sensors/vitals/bloodOxygen';
 
 const LONG_REGULAR_RATE = 1 / 20;
 const NORMAL_REGULAR_INTERVAL = 2000;
