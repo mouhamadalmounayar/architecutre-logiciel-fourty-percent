@@ -7,6 +7,7 @@ Ce document décrit l'architecture cloud du système de surveillance de santé, 
 L'architecture adopte un modèle événementiel (event-driven) utilisant Apache Kafka comme bus de messages central. Cette approche permet un découplage fort entre les différents composants, facilitant ainsi l'évolutivité et la maintenance du système. Les trois microservices principaux communiquent de manière asynchrone via des topics Kafka, ce qui garantit la résilience et la capacité à traiter un grand volume d'alertes simultanément.
 
 ## Architecture Générale
+<img width="5760" height="3244" alt="Untitled Diagram(2)" src="https://github.com/user-attachments/assets/fc503bcf-b52b-4eef-916c-4c6afb148ece" />
 
 Le système est composé de six composants principaux qui interagissent ensemble pour traiter le flux d'alertes de santé. Le point d'entrée du système est le microservice validator, qui expose une API REST pour recevoir les alertes. Une fois validées, ces alertes sont publiées dans Kafka, puis consommées séquentiellement par le service d'enrichissement et le service de notification. Cette architecture en pipeline garantit que chaque alerte passe par toutes les étapes de traitement nécessaires avant d'atteindre les destinataires finaux.
 
@@ -121,8 +122,6 @@ Le système implémente plusieurs patterns architecturaux reconnus qui contribue
 
 **Microservices Pattern**: Le système est décomposé en services indépendants, chacun avec une responsabilité clairement définie. Le validator gère l'API et la validation, l'enrichment gère la logique métier et l'accès aux données, et le notification service gère l'envoi d'emails. Chaque service peut être développé, déployé et scalé indépendamment, utilisant la technologie la plus appropriée pour sa fonction (Java pour la logique métier complexe, Node.js pour l'I/O intensif).
 
-**Saga Pattern (Implicite)**: Bien que non explicitement implémenté comme un saga transactionnel complet, le flux de traitement des alertes suit le pattern saga. Chaque étape (validation, enrichissement, notification) est autonome et publie des événements pour déclencher l'étape suivante. Si une étape échoue, les autres continuent à traiter les messages qu'elles peuvent gérer, et des mécanismes de retry au niveau de Kafka garantissent qu'aucun message n'est perdu.
-
 **Repository Pattern**: Le service d'enrichissement utilise le pattern repository via Hibernate ORM Panache. La classe `PatientRepository` encapsule toute la logique d'accès aux données pour l'entité Patient, isolant ainsi la logique métier des détails de persistance. Cette abstraction facilite les tests et permet de changer l'implémentation de la base de données sans affecter la logique métier.
 
 **Circuit Breaker (Implicite)**: Bien que non explicitement implémenté, Kafka agit naturellement comme un circuit breaker. Si le service d'enrichissement devient temporairement indisponible, les messages s'accumulent dans Kafka sans être perdus. Lorsque le service redémarre, il reprend le traitement là où il s'était arrêté. De même, si le serveur SMTP est indisponible, le service de notification peut être configuré pour réessayer ou enregistrer les échecs pour un traitement ultérieur.
@@ -160,39 +159,3 @@ Le système est conçu avec la scalabilité à l'esprit, permettant de gérer un
 **Backpressure handling**: Kafka gère naturellement le backpressure. Si les consumers ne peuvent pas suivre le rythme de production des messages, ceux-ci s'accumulent dans Kafka jusqu'à ce que les consumers puissent les traiter. Les topics sont configurés avec une rétention suffisante pour absorber les pics de charge temporaires.
 
 **Async processing**: Le service de notification envoie tous les emails en parallèle en utilisant `Promise.allSettled`, réduisant ainsi considérablement le temps total de traitement par rapport à un envoi séquentiel. Les timeouts Kafka sont configurés généreusement pour accommoder les opérations SMTP potentiellement lentes.
-
-## Observabilité et Monitoring
-
-Le système inclut plusieurs mécanismes pour surveiller son bon fonctionnement et diagnostiquer les problèmes.
-
-**Logging structuré**: Tous les services implémentent des logs détaillés avec des niveaux appropriés. Le validator et le notification service incluent des logs spectaculaires avec des bannières colorées pour faciliter le suivi visuel pendant les démonstrations et les tests. Le service d'enrichissement utilise le logger JBoss avec différents niveaux (INFO, DEBUG, ERROR) configurables via `application.properties`.
-
-**Health checks**: Le validator expose un endpoint `/status` qui retourne l'état du service. Le service d'enrichissement inclut automatiquement les endpoints Quarkus SmallRye Health (`/q/health/live`, `/q/health/ready`) qui vérifient la disponibilité de Kafka et PostgreSQL. PostgreSQL lui-même est configuré avec un health check Docker qui vérifie régulièrement la disponibilité via `pg_isready`.
-
-**Kafka UI**: L'interface Kafka UI (accessible sur localhost:8080) fournit une visibilité complète sur l'état du cluster Kafka, incluant la liste des topics, le nombre de messages dans chaque partition, les groupes de consommateurs avec leur lag, et la possibilité d'inspecter individuellement les messages. Cet outil est invaluable pour le débogage et le monitoring.
-
-**OpenAPI/Swagger**: Le service d'enrichissement expose une documentation OpenAPI accessible via `/q/openapi` et une interface Swagger UI sur `/q/swagger-ui`. Bien que ce service n'expose pas d'API REST publique pour le moment, cette documentation facilite la compréhension de sa structure interne.
-
-**Métriques**: Bien que non configuré dans cette version, Quarkus supporte nativement Micrometer et Prometheus pour l'export de métriques. En production, des métriques comme le throughput de messages, les latences de traitement, les taux d'erreur, et l'utilisation des ressources devraient être collectées et visualisées dans un tableau de bord Grafana.
-
-**Tracing distribué**: Pour une observabilité complète en production, un système de tracing distribué comme Jaeger ou Zipkin devrait être intégré. Quarkus et Node.js supportent tous deux OpenTelemetry, permettant de tracer une alerte à travers tous les services du système.
-
-## Déploiement
-
-Le déploiement du système est simplifié grâce à Docker Compose.
-
-**Prérequis**: Docker et Docker Compose doivent être installés sur la machine hôte. Un fichier `.env` doit être créé à la racine du projet avec toutes les variables d'environnement nécessaires, notamment les credentials de base de données et SMTP.
-
-**Commandes de déploiement**: Pour démarrer l'ensemble du système, il suffit d'exécuter `docker-compose up` depuis le répertoire `cloud/`. Docker Compose construit automatiquement les images pour les services qui nécessitent une compilation (validator, alert-enrichment, notification-service), pull les images des services tiers (Kafka, PostgreSQL), puis démarre tous les conteneurs dans l'ordre approprié en respectant les dépendances. L'option `-d` peut être ajoutée pour exécuter en arrière-plan.
-
-**Ordre de démarrage**: Docker Compose garantit que Kafka et PostgreSQL démarrent en premier. Une fois PostgreSQL healthy, alert-enrichment démarre et initialise sa connexion à la base de données. Le validator démarre en parallèle et crée automatiquement les topics Kafka nécessaires avec une stratégie de retry. Le notification-service démarre en dernier et commence à consommer les messages enrichis.
-
-**Arrêt et nettoyage**: La commande `docker-compose down` arrête proprement tous les services et supprime les conteneurs. L'option `-v` peut être ajoutée pour également supprimer les volumes et donc réinitialiser complètement la base de données.
-
-**Configuration environnementale**: Les variables d'environnement suivantes doivent être définies dans le fichier `.env`:
-- `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, `DB_PORT` pour PostgreSQL
-- `SMTP_USER`, `SMTP_PASS`, `SMTP_HOST`, `SMTP_PORT` pour l'envoi d'emails
-- `JWT_SECRET` pour la sécurité JWT
-- `KAFKA_BOOTSTRAP_SERVERS` pour la connexion Kafka (défaut: kafka:9093)
-
-**Réseau externe**: Le système utilise un réseau Docker externe nommé `shared`. Ce réseau doit être créé avant le premier démarrage avec la commande `docker network create shared`. Cette approche permet de connecter facilement d'autres composants du système au même réseau.
