@@ -12,8 +12,7 @@ Cette couche Edge permet une détection rapide, une résilience locale en cas de
 ---
 
 ## Schéma d'Architecture
-
-![Architecture Edge/Local](image-2.png)
+![image](https://github.com/user-attachments/assets/7f89442f-ac87-401c-abfa-10f76d94162e)
 
 *Schéma représentant l'architecture locale avec MQTT, Preprocessing, Postprocessing et Gateway.*
 
