@@ -5,7 +5,7 @@ Depot architecture logicielle
 ## Documentation Architecture
 
 - **[Architecture Edge/Local (MQTT, Preprocessing, Postprocessing)](local/ARCHITECTURE.md)** - Architecture de la partie locale/Edge du système
-- Architecture Cloud (Kafka, Validator, Alert Enrichment, Notification) - *À venir*
+- [Architecture Cloud (Kafka, Validator, Alert Enrichment, Notification) ](cloud/architecture.md) - Architecture de la partie Cloud du système
 
 ---
 
@@ -13,8 +13,8 @@ Depot architecture logicielle
 
 ### Prérequis
 
-- Docker ≥ 20.x  
-- Docker Compose ≥ 2.x  
+- Docker ≥ 20.x
+- Docker Compose ≥ 2.x
 
 ---
 
