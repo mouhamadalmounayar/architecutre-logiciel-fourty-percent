@@ -110,15 +110,6 @@ Ce document présente l’analyse des risques liée à notre chaîne d’alertin
 - **Inclus** : flux d’événements, qualité des données, contrats d’échange, routage des notifications, sécurité opérationnelle (secrets, transport), observabilité.
 - **Exclus** : sécurité physique des capteurs, réseau des établissements, gestion RH/discipline des destinataires finaux, aspects réglementaires non techniques (ex. archivage légal), UI/UX des clients de notification.
 
-### Vue d’ensemble de l’architecture (rappel)
-- **Capteurs & MQTT** : acquisition, QoS, pré/post-traitement (bornes de plausibilité, fenêtres, cooldown, détection *stale*).
-- **Validator MS** : contrôle d’entrée (schéma strict – ex. Joi), assainissement du payload.
-- **Kafka** : bus d’événements entre services (topics dédiés, partitions, consumer groups, reprise).
-- **Alert Enrichment MS** : enrichissement métier (contextualisation patient → soignants) avec **Postgres**.
-- **Notification MS** : envoi (ex. e-mail), TLS, variables d’environnement pour les secrets.
-- **Timeseries/Influx** : stockage séries temporelles, supervision de trous/outliers et historique métier.
-- **Observabilité** : endpoints /health, métriques techniques et métier (taux d’alerte, latence, erreurs).
-
 ### Méthodologie d’analyse
 - **Matrice 4×4** : Probabilité (Exceptionnel, Rare, Occasionnel, Fréquent) × Impact (Mineur, Modéré, Majeur, Critique).
 - **Principes** : détecter tôt, isoler au bon maillon, dégrader gracieusement, tracer et alerter, corriger sans effet domino.
